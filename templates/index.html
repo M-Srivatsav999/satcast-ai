@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SatCast AI — Real-Time Rainfall Prediction</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&family=Fira+Code:wght@300;400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/css/main.css?v=3" />
+</head>
+
+<body>
+
+    <!-- ATMOSPHERIC BACKGROUND -->
+    <div class="atmos-bg">
+        <div class="radar-sweep"></div>
+        <div class="radar-rings">
+            <div class="radar-ring"></div>
+            <div class="radar-ring"></div>
+            <div class="radar-ring"></div>
+            <div class="radar-ring"></div>
+            <div class="radar-ring"></div>
+        </div>
+        <canvas class="rain-canvas" id="rainCanvas"></canvas>
+        <div class="lightning-flash"></div>
+        <div class="cloud-layer"></div>
+        <div class="cloud-layer"></div>
+        <div class="cloud-layer"></div>
+    </div>
+
+    <!-- NAVBAR -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <div class="nav-logo">
+                <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="20" cy="20" r="18" stroke="#0066ff" stroke-width="1" opacity="0.4"/>
+        <circle cx="20" cy="20" r="12" stroke="#00cfff" stroke-width="1" opacity="0.6"/>
+        <circle cx="20" cy="20" r="6"  stroke="#00cfff" stroke-width="1.5"/>
+        <line x1="20" y1="2"  x2="20" y2="38" stroke="#0066ff" stroke-width="0.5" opacity="0.3"/>
+        <line x1="2"  y1="20" x2="38" y2="20" stroke="#0066ff" stroke-width="0.5" opacity="0.3"/>
+        <path d="M20 2 A18 18 0 0 1 38 20" stroke="#00cfff" stroke-width="1.5" stroke-linecap="round"
+              style="animation:radar-rotate 3s linear infinite;transform-origin:20px 20px;"/>
+        <circle cx="20" cy="20" r="2.5" fill="#00cfff"/>
+      </svg>
+            </div>
+            <div>
+                <span class="nav-title">SatCast AI</span>
+                <span class="nav-sub">Rainfall Intelligence</span>
+            </div>
+        </div>
+        <div class="nav-links">
+            <a href="#predict" class="nav-link active" data-tab="predict">Predict</a>
+            <a href="#satellite" class="nav-link" data-tab="satellite">Satellite</a>
+            <a href="#weather" class="nav-link" data-tab="weather">Weather</a>
+            <a href="#model" class="nav-link" data-tab="model">Model</a>
+        </div>
+        <div class="nav-status">
+            <span class="status-dot"></span>
+            <span class="status-text">LIVE</span>
+            <span class="nav-time" id="navTime"></span>
+        </div>
+    </nav>
+
+    <!-- HERO -->
+    <header class="hero">
+        <div class="hero-content">
+            <div class="hero-eyebrow">
+                <span class="eyebrow-pulse"></span> NASA GIBS · OPEN-METEO · DEEP LEARNING
+            </div>
+            <h1 class="hero-title">
+                Real-Time<br/>
+                <span class="hero-accent">Rainfall</span><br/> Prediction
+            </h1>
+            <p class="hero-desc">
+                CNN + Bidirectional LSTM + Multi-Head Attention.<br/> Live satellite imagery. 5-horizon forecast. Zero cost.
+            </p>
+            <div class="hero-tags">
+                <span class="tag">🛰️ NASA GIBS</span>
+                <span class="tag">🧠 ResNet-4</span>
+                <span class="tag">⚡ BiLSTM</span>
+                <span class="tag">🎯 MC-Dropout</span>
+                <span class="tag">✅ Free APIs</span>
+            </div>
+        </div>
+        <div class="hero-stats">
+            <div class="hstat">
+                <span class="hstat-val">5</span>
+                <span class="hstat-label">Forecast Horizons</span>
+            </div>
+            <div class="hstat-div"></div>
+            <div class="hstat">
+                <span class="hstat-val">75%+</span>
+                <span class="hstat-label">R² Score</span>
+            </div>
+            <div class="hstat-div"></div>
+            <div class="hstat">
+                <span class="hstat-val">7</span>
+                <span class="hstat-label">Satellite Layers</span>
+            </div>
+            <div class="hstat-div"></div>
+            <div class="hstat">
+                <span class="hstat-val">0₹</span>
+                <span class="hstat-label">API Cost</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN -->
+    <main class="main-content">
+
+        <!-- SIDEBAR -->
+        <aside class="control-panel">
+            <div class="panel-section">
+                <div class="panel-label">REGION</div>
+                <select id="locationSelect" class="select-field">
+        {% for loc in locations %}
+        <option value="{{ loc }}" {% if loc == "India (Hyderabad)" %}selected{% endif %}>{{ loc }}</option>
+        {% endfor %}
+      </select>
+            </div>
+
+            <div class="panel-section" id="customCoords" style="display:none;">
+                <div class="panel-label">CUSTOM COORDINATES</div>
+                <div class="coord-row">
+                    <div class="coord-field">
+                        <label>Latitude</label>
+                        <input type="number" id="customLat" value="17.4" step="0.1" class="input-field" />
+                    </div>
+                    <div class="coord-field">
+                        <label>Longitude</label>
+                        <input type="number" id="customLon" value="78.5" step="0.1" class="input-field" />
+                    </div>
+                </div>
+                <label class="input-label">Margin (deg): <span id="marginVal">3.0</span></label>
+                <input type="range" id="customMargin" min="1" max="10" step="0.5" value="3" class="range-field" />
+            </div>
+
+            <div class="panel-section">
+                <div class="panel-label">SATELLITE LAYER</div>
+                <select id="layerSelect" class="select-field">
+        {% for layer in layers %}
+        <option value="{{ layer }}">{{ layer }}</option>
+        {% endfor %}
+      </select>
+            </div>
+
+            <div class="panel-section">
+                <div class="panel-label">TEMPORAL FRAMES</div>
+                <div class="frames-row">
+                    <input type="range" id="framesSlider" min="3" max="5" value="5" class="range-field" />
+                    <span class="range-val" id="framesVal">5</span>
+                </div>
+            </div>
+
+            <div class="panel-section">
+                <div class="panel-label">INPUT MODE</div>
+                <div class="mode-toggle">
+                    <button class="mode-btn active" id="modeNasa" onclick="setMode('nasa')">🛰️ Live NASA</button>
+                    <button class="mode-btn" id="modeUpload" onclick="setMode('upload')">📁 Upload</button>
+                </div>
+            </div>
+
+            <div class="panel-section" id="uploadSection" style="display:none;">
+                <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+                    <input type="file" id="fileInput" accept=".jpg,.jpeg,.png" multiple style="display:none" onchange="handleUpload(event)" />
+                    <div class="upload-icon">⬆</div>
+                    <div class="upload-text">Drop satellite images here</div>
+                    <div class="upload-sub">JPG / PNG · 2+ images</div>
+                </div>
+            </div>
+
+            <div class="panel-section">
+                <div class="panel-label">SYSTEM</div>
+                <div class="sys-info">
+                    <div class="sys-row"><span>Model</span><span class="sys-val">CNN+BiLSTM+Attn</span></div>
+                    <div class="sys-row"><span>Satellite</span><span class="sys-val sys-green">NASA GIBS</span></div>
+                    <div class="sys-row"><span>Weather</span><span class="sys-val sys-green">Open-Meteo</span></div>
+                    <div class="sys-row"><span>API Key</span><span class="sys-val sys-green">None ✓</span></div>
+                </div>
+            </div>
+
+            <div class="credit-box">
+                <div class="credit-name">Mukka Srivatsav and Team</div>
+                <div class="credit-sub">CSE - AIML · Mini Project · 2025-26</div>
+            </div>
+        </aside>
+
+        <!-- TAB CONTENT -->
+        <div class="tab-content">
+
+            <!-- TAB: PREDICT -->
+            <section id="tab-predict" class="tab-section active">
+                <div class="section-header">
+                    <h2>Rainfall Prediction</h2>
+                    <p>Fetch live satellite data or upload images → run deep learning inference</p>
+                </div>
+
+                <div class="frames-container">
+                    <div class="frames-placeholder" id="framesPlaceholder">
+                        <div class="placeholder-icon">🛰️</div>
+                        <div class="placeholder-text">Satellite frames will appear here</div>
+                        <div class="placeholder-sub">Select a region and fetch live data or upload images</div>
+                    </div>
+                    <div class="frames-grid" id="framesGrid" style="display:none;"></div>
+                </div>
+
+                <div class="action-row">
+                    <button class="btn-primary" id="fetchBtn" onclick="fetchSatellite()">
+          <span class="btn-icon">📥</span> Fetch Live Satellite Data
+        </button>
+                    <button class="btn-predict" id="predictBtn" onclick="runPredict()" disabled>
+          <span class="btn-icon">⚡</span> PREDICT RAINFALL
+        </button>
+                </div>
+
+                <div id="alertBanner" style="display:none;"></div>
+
+                <div id="resultsSection" style="display:none;">
+                    <div class="metrics-row" id="metricsRow"></div>
+
+                    <div class="conf-wrap">
+                        <div class="conf-label">
+                            <span>Model Confidence</span>
+                            <span id="confPct">—</span>
+                        </div>
+                        <div class="conf-track">
+                            <div class="conf-fill" id="confFill"></div>
+                        </div>
+                    </div>
+
+                    <div class="horizon-grid" id="horizonGrid"></div>
+
+                    <div class="charts-row">
+                        <div class="chart-card chart-main">
+                            <div class="chart-title">Multi-Horizon Forecast</div>
+                            <canvas id="forecastChart"></canvas>
+                        </div>
+                        <div class="chart-card chart-side">
+                            <div class="chart-title">Confidence</div>
+                            <canvas id="gaugeChart"></canvas>
+                            <div class="chart-title" style="margin-top:12px;">Rain Probability</div>
+                            <canvas id="probChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="cloud-score-bar" id="cloudScoreBar" style="display:none;">
+                        <div class="csb-label">Cloud Analysis Score</div>
+                        <div class="csb-row">
+                            <span class="csb-val" id="csVal">—</span>
+                            <div class="csb-track">
+                                <div class="csb-fill" id="csFill"></div>
+                            </div>
+                            <span class="csb-desc" id="csDesc">—</span>
+                        </div>
+                    </div>
+
+                    <button class="btn-download" onclick="downloadReport()">
+          📥 Download Prediction Report (JSON)
+        </button>
+                </div>
+            </section>
+
+            <!-- TAB: SATELLITE -->
+            <section id="tab-satellite" class="tab-section">
+                <div class="section-header">
+                    <h2>Satellite View</h2>
+                    <p>Compare multiple NASA GIBS imagery layers side by side</p>
+                </div>
+
+                <div class="sat-controls">
+                    <div class="sat-ctrl-group">
+                        <label class="panel-label">DATE</label>
+                        <select id="satDate" class="select-field">
+            {% for d in dates %}
+            <option value="{{ d }}">{{ d }}</option>
+            {% endfor %}
+          </select>
+                    </div>
+                    <div class="sat-ctrl-group">
+                        <label class="panel-label">LAYERS (max 4)</label>
+                        <div class="layer-checkboxes" id="layerChecks">
+                            {% for layer in layers %}
+                            <label class="layer-check">
+              <input type="checkbox" value="{{ layer }}"
+                {% if layer in ["True Color (MODIS Terra)", "IR Thermal (GOES-East)", "GPM Precipitation Rate"] %}checked{% endif %}>
+              <span>{{ layer }}</span>
+            </label> {% endfor %}
+                        </div>
+                    </div>
+                    <div class="sat-ctrl-group">
+                        <label class="panel-label">RESOLUTION</label>
+                        <select id="satRes" class="select-field">
+            <option value="256">256px</option>
+            <option value="384" selected>384px</option>
+            <option value="512">512px</option>
+          </select>
+                    </div>
+                </div>
+
+                <button class="btn-primary" onclick="loadSatView()">🔄 Load Satellite Layers</button>
+
+                <div id="satViewGrid" class="sat-view-grid"></div>
+
+                <div class="layer-guide">
+                    <div class="guide-title">Layer Reference Guide</div>
+                    <div class="guide-grid">
+                        <div class="guide-card">
+                            <div class="guide-icon">🌍</div>
+                            <div class="guide-name">True Color (MODIS)</div>
+                            <div class="guide-desc">Natural-color composite. Cloud shapes, land, ocean. Daily, ~3-5h latency.</div>
+                        </div>
+                        <div class="guide-card">
+                            <div class="guide-icon">🌡️</div>
+                            <div class="guide-name">IR Thermal (GOES-East)</div>
+                            <div class="guide-desc">Infrared brightness temp. Cold tops = deep convection = heavy rain. Every 10 min.</div>
+                        </div>
+                        <div class="guide-card">
+                            <div class="guide-icon">🌧️</div>
+                            <div class="guide-name">GPM Precipitation</div>
+                            <div class="guide-desc">Direct rain rate from GPM satellite. Near-real-time, 30-min updates.</div>
+                        </div>
+                        <div class="guide-card">
+                            <div class="guide-icon">💧</div>
+                            <div class="guide-name">Water Vapor</div>
+                            <div class="guide-desc">Mid-level moisture. Atmospheric river tracking and dry air intrusions.</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB: WEATHER -->
+            <section id="tab-weather" class="tab-section">
+                <div class="section-header">
+                    <h2>Live Weather Data</h2>
+                    <p>Open-Meteo API · Current conditions + 24h hourly forecast · No API key required</p>
+                </div>
+
+                <button class="btn-primary" onclick="fetchWeather()">🌐 Fetch Live Weather</button>
+
+                <div id="wxSection" style="display:none;">
+                    <div class="wx-grid" id="wxGrid"></div>
+                    <div class="chart-card" style="margin-top:20px;">
+                        <div class="chart-title">24-Hour Hourly Forecast</div>
+                        <canvas id="weatherChart" style="height:280px;"></canvas>
+                    </div>
+                    <div class="wx-stats" id="wxStats"></div>
+                </div>
+
+                <div class="wx-placeholder" id="wxPlaceholder">
+                    <div class="placeholder-icon">🌡️</div>
+                    <div class="placeholder-text">Click Fetch Live Weather to load conditions</div>
+                </div>
+            </section>
+
+            <!-- TAB: MODEL -->
+            <section id="tab-model" class="tab-section">
+                <div class="section-header">
+                    <h2>Model Architecture</h2>
+                    <p>CNN + Bidirectional LSTM + Multi-Head Attention — complete system overview</p>
+                </div>
+
+                <div class="model-grid">
+                    <div class="model-card">
+                        <div class="model-card-title">This Project vs Baseline</div>
+                        <table class="info-table">
+                            <thead>
+                                <tr>
+                                    <th>Feature</th>
+                                    <th>Baseline</th>
+                                    <th>SatCast AI</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Data Source</td>
+                                    <td class="td-bad">Synthetic noise</td>
+                                    <td class="td-good">✅ Real NASA GIBS</td>
+                                </tr>
+                                <tr>
+                                    <td>Resolution</td>
+                                    <td class="td-bad">64×64</td>
+                                    <td class="td-good">✅ 128×128</td>
+                                </tr>
+                                <tr>
+                                    <td>CNN</td>
+                                    <td class="td-bad">3-layer flat</td>
+                                    <td class="td-good">✅ ResNet-4 + skip</td>
+                                </tr>
+                                <tr>
+                                    <td>Temporal</td>
+                                    <td class="td-bad">LSTM 32u</td>
+                                    <td class="td-good">✅ BiLSTM + Attention</td>
+                                </tr>
+                                <tr>
+                                    <td>Horizons</td>
+                                    <td class="td-bad">1 only</td>
+                                    <td class="td-good">✅ 5 (1-24h)</td>
+                                </tr>
+                                <tr>
+                                    <td>Uncertainty</td>
+                                    <td class="td-bad">None</td>
+                                    <td class="td-good">✅ MC-Dropout CI</td>
+                                </tr>
+                                <tr>
+                                    <td>Classification</td>
+                                    <td class="td-bad">None</td>
+                                    <td class="td-good">✅ 5 severity classes</td>
+                                </tr>
+                                <tr>
+                                    <td>R² Score</td>
+                                    <td class="td-bad">≈ 0.000</td>
+                                    <td class="td-good">✅ ~0.75+</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="model-card">
+                        <div class="model-card-title">Industry Comparison</div>
+                        <table class="info-table">
+                            <thead>
+                                <tr>
+                                    <th>System</th>
+                                    <th>Architecture</th>
+                                    <th>Cost</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="td-highlight">SatCast AI</td>
+                                    <td>CNN+BiLSTM+Attn</td>
+                                    <td class="td-good">Free ✅</td>
+                                </tr>
+                                <tr>
+                                    <td>NowcastNet</td>
+                                    <td>CNN + GAN</td>
+                                    <td class="td-bad">Millions $</td>
+                                </tr>
+                                <tr>
+                                    <td>GraphCast</td>
+                                    <td>Graph Neural Net</td>
+                                    <td class="td-bad">Millions $</td>
+                                </tr>
+                                <tr>
+                                    <td>FourCastNet</td>
+                                    <td>Fourier Neural Op.</td>
+                                    <td class="td-bad">Millions $</td>
+                                </tr>
+                                <tr>
+                                    <td>ECMWF AIFS</td>
+                                    <td>Graph Neural Net</td>
+                                    <td class="td-bad">Millions €</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="arch-card">
+                    <div class="model-card-title">Architecture Pipeline</div>
+                    <div class="arch-flow">
+                        <div class="arch-step">
+                            <div class="arch-step-num">01</div>
+                            <div class="arch-step-title">Input</div>
+                            <div class="arch-step-desc">5 × 3 × 128×128<br/>satellite frames</div>
+                        </div>
+                        <div class="arch-arrow">→</div>
+                        <div class="arch-step">
+                            <div class="arch-step-num">02</div>
+                            <div class="arch-step-title">ResNet-4 CNN</div>
+                            <div class="arch-step-desc">32→64→128→256<br/>skip connections</div>
+                        </div>
+                        <div class="arch-arrow">→</div>
+                        <div class="arch-step">
+                            <div class="arch-step-num">03</div>
+                            <div class="arch-step-title">BiLSTM</div>
+                            <div class="arch-step-desc">2 layers · 128u<br/>forward + backward</div>
+                        </div>
+                        <div class="arch-arrow">→</div>
+                        <div class="arch-step">
+                            <div class="arch-step-num">04</div>
+                            <div class="arch-step-title">Attention</div>
+                            <div class="arch-step-desc">4-head self-attention<br/>frame weighting</div>
+                        </div>
+                        <div class="arch-arrow">→</div>
+                        <div class="arch-step">
+                            <div class="arch-step-num">05</div>
+                            <div class="arch-step-title">Output</div>
+                            <div class="arch-step-desc">1h–24h forecast<br/>+ MC-Dropout CI</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tech-grid">
+                    <div class="model-card-title" style="grid-column:1/-1;">Technology Stack</div>
+                    <div class="tech-pill" style="border-left-color:#EE4C2C;">
+                        <div class="tech-name">PyTorch 2.1</div>
+                        <div class="tech-purpose">Deep Learning</div>
+                    </div>
+                    <div class="tech-pill" style="border-left-color:#00897B;">
+                        <div class="tech-name">Flask</div>
+                        <div class="tech-purpose">Web Framework</div>
+                    </div>
+                    <div class="tech-pill" style="border-left-color:#0B3D91;">
+                        <div class="tech-name">NASA GIBS</div>
+                        <div class="tech-purpose">Satellite Data</div>
+                    </div>
+                    <div class="tech-pill" style="border-left-color:#2E7D32;">
+                        <div class="tech-name">Open-Meteo</div>
+                        <div class="tech-purpose">Weather API</div>
+                    </div>
+                    <div class="tech-pill" style="border-left-color:#FF6384;">
+                        <div class="tech-name">Chart.js</div>
+                        <div class="tech-purpose">Visualizations</div>
+                    </div>
+                    <div class="tech-pill" style="border-left-color:#4C78A8;">
+                        <div class="tech-name">NumPy</div>
+                        <div class="tech-purpose">Numerics</div>
+                    </div>
+                    <div class="tech-pill" style="border-left-color:#FFD43B;">
+                        <div class="tech-name">Pillow</div>
+                        <div class="tech-purpose">Image Processing</div>
+                    </div>
+                    <div class="tech-pill" style="border-left-color:#F7931E;">
+                        <div class="tech-name">scikit-learn</div>
+                        <div class="tech-purpose">ML Utilities</div>
+                    </div>
+                </div>
+
+            </section>
+
+        </div>
+        <!-- end tab-content -->
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="footer">
+        <div class="footer-brand">
+            <span class="footer-icon">⬡</span>
+            <span>SatCast AI</span>
+        </div>
+        <div class="footer-center">
+            Developed by <strong>Mukka Srivatsav and Team</strong> &nbsp;·&nbsp; Dept. of CSE - AIML &nbsp;·&nbsp; Mini Project 2025–26
+        </div>
+        <div class="footer-right">
+            NASA GIBS · Open-Meteo · CNN+BiLSTM+Attention
+        </div>
+    </footer>
+
+    <!-- LOADING OVERLAY -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-radar">
+            <div class="loading-radar-ring"></div>
+            <div class="loading-radar-ring"></div>
+            <div class="loading-radar-ring"></div>
+            <div class="loading-sweep"></div>
+            <div class="loading-dot"></div>
+        </div>
+        <div class="loading-text" id="loadingText">Scanning Atmosphere...</div>
+        <div class="loading-bar">
+            <div class="loading-bar-fill"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="/static/js/main.js?v=3"></script>
+</body>
+
+</html>
