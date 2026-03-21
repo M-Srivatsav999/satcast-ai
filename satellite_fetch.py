@@ -14,7 +14,6 @@ import numpy as np
 from PIL import Image
 from io import BytesIO
 from datetime import datetime, timedelta, timezone
-import streamlit as st
 from config import NASA_GIBS_WMS, IMG_SIZE
 
 # ── Imagery layer definitions ────────────────────────────────────────
