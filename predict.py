@@ -1,8 +1,6 @@
-# predict.py – Smart prediction: original model for NASA live, physics scaling for uploads
+# predict.py – Smart prediction engine
 
 import os
-os.environ["STREAMLIT_WATCHER_TYPE"] = "none"
-
 import torch
 import joblib
 import numpy as np
@@ -48,13 +46,7 @@ def _classify_rain(mm_h):
 
 
 def _extract_cloud_signal(image_inputs):
-    """
-    Physics-based cloud feature extraction.
-    Used ONLY when user uploads their own images.
-    Tuned for real satellite imagery pixel distributions.
-    """
     scores = []
-
     for img_input in image_inputs:
         if isinstance(img_input, str):
             img = Image.open(img_input).convert("RGB")
@@ -65,15 +57,10 @@ def _extract_cloud_signal(image_inputs):
         r, g, b = arr[:,:,0], arr[:,:,1], arr[:,:,2]
         brightness = (r + g + b) / 3.0
 
-        # 1. General cloud coverage
         cloud_cover  = float(np.mean(brightness > 0.40))
-        # 2. Dense/thick cloud tops
         dense_cloud  = float(np.mean(brightness > 0.60))
-        # 3. Cold cloud tops (pure white = high altitude = rain)
         cold_tops    = float(np.mean((r > 0.75) & (g > 0.75) & (b > 0.75)))
-        # 4. Convective texture
         conv_texture = min(float(np.var(brightness)) * 6.0, 1.0)
-        # 5. Remove clear blue sky
         clear_sky    = float(np.mean((b > r * 1.15) & (brightness < 0.55)))
         adjusted     = max(0.0, cloud_cover - clear_sky * 0.6)
 
@@ -87,20 +74,18 @@ def _extract_cloud_signal(image_inputs):
 
     cloud_score = float(np.mean(scores))
 
-    # Map cloud score → rainfall mm/h
-    # Thresholds calibrated for real satellite pixel distributions
     if cloud_score < 0.08:
-        rain_1h = cloud_score * 10.0                        # 0.0 – 0.8  → No Rain
+        rain_1h = cloud_score * 10.0
     elif cloud_score < 0.18:
-        rain_1h = 0.8 + (cloud_score - 0.08) * 20.0        # 0.8 – 2.8  → Light
+        rain_1h = 0.8 + (cloud_score - 0.08) * 20.0
     elif cloud_score < 0.30:
-        rain_1h = 2.8 + (cloud_score - 0.18) * 60.0        # 2.8 – 10.0 → Moderate
+        rain_1h = 2.8 + (cloud_score - 0.18) * 60.0
     elif cloud_score < 0.45:
-        rain_1h = 10.0 + (cloud_score - 0.30) * 100.0      # 10  – 25   → Heavy
+        rain_1h = 10.0 + (cloud_score - 0.30) * 100.0
     elif cloud_score < 0.65:
-        rain_1h = 25.0 + (cloud_score - 0.45) * 100.0      # 25  – 45   → Heavy
+        rain_1h = 25.0 + (cloud_score - 0.45) * 100.0
     else:
-        rain_1h = 45.0 + (cloud_score - 0.65) * 120.0      # 45+ → Extreme
+        rain_1h = 45.0 + (cloud_score - 0.65) * 120.0
 
     return {
         "cloud_score": round(cloud_score, 3),
@@ -110,29 +95,14 @@ def _extract_cloud_signal(image_inputs):
 
 @torch.no_grad()
 def predict_rainfall(image_inputs, n_mc_samples=20, use_physics=False):
-    """
-    Dual-mode prediction:
-
-    use_physics=False (default) → pure model prediction
-        Used for: Live NASA satellite fetch
-        Behaviour: Original CNN+BiLSTM+Attention output
-        Result: Correctly shows No Rain for clear sky NASA imagery
-
-    use_physics=True → physics-scaled prediction
-        Used for: User uploaded images
-        Behaviour: Cloud features extracted from pixels → rainfall scaled accordingly
-        Result: Dense cloudy images → Moderate/Heavy, clear images → No Rain
-    """
     model, scaler = _load_model_and_scaler()
     x = _images_to_tensor(image_inputs).to(DEVICE)
 
-    # ── Always run model (needed for temporal decay ratios) ───────────
     mean_scaled, std_scaled = model.predict_with_uncertainty(x, n_samples=n_mc_samples)
     mean_inv = scaler.inverse_transform(mean_scaled)[0]
     std_inv  = scaler.inverse_transform(np.clip(std_scaled, 0, None))[0]
 
     if not use_physics:
-        # ── MODE 1: Pure model output (Live NASA) ─────────────────────
         horizons = []
         for i, hrs in enumerate(FORECAST_HOURS):
             mm_h = float(max(0.0, mean_inv[i]))
@@ -160,17 +130,14 @@ def predict_rainfall(image_inputs, n_mc_samples=20, use_physics=False):
         }
 
     else:
-        # ── MODE 2: Physics scaling (Uploaded images) ─────────────────
         physics      = _extract_cloud_signal(image_inputs)
         phys_rain_1h = physics["rain_1h_mmh"]
         cloud_score  = physics["cloud_score"]
 
-        # Use model for temporal decay ratios only
         model_1h = max(float(mean_inv[0]), 1e-6)
         if model_1h > 0.5:
             ratios = [max(float(mean_inv[i]), 0) / model_1h for i in range(len(FORECAST_HOURS))]
         else:
-            # Model near-zero → use natural decay
             ratios = [1.0, 0.80, 0.62, 0.42, 0.25]
 
         horizons = []
@@ -186,7 +153,6 @@ def predict_rainfall(image_inputs, n_mc_samples=20, use_physics=False):
                 "color":       col,
             })
 
-        # Confidence based on cloud clarity
         if cloud_score < 0.08:
             confidence = 92.0
         elif cloud_score < 0.18:

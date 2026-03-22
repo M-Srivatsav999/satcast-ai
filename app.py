@@ -2,12 +2,9 @@
 # Developer: Mukka Srivatsav and Team | CSE-AIML Mini Project 2025-26
 
 import os, sys, json
-os.environ["STREAMLIT_WATCHER_TYPE"] = "none"
-
 from flask import Flask, render_template, request, jsonify
 from datetime import datetime, timezone
 
-# Add parent directory to path if models are in APP folder
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from satellite_fetch import fetch_sequence, LAYERS, LOCATIONS, get_available_dates, fetch_satellite_image, extract_cloud_features
@@ -70,10 +67,10 @@ def api_fetch_satellite():
         for img, d in zip(images, dates_fetched):
             feats = extract_cloud_features(img)
             frames.append({
-                "date":   d,
-                "b64":    pil_to_b64(img.resize((384, 384))),
-                "cloud":  round(feats["cloud_cover"], 3),
-                "cold":   round(feats["cold_cloud_fraction"], 3),
+                "date":     d,
+                "b64":      pil_to_b64(img.resize((384, 384))),
+                "cloud":    round(feats["cloud_cover"], 3),
+                "cold":     round(feats["cold_cloud_fraction"], 3),
                 "moisture": round(feats["moisture_index"], 3),
             })
 
@@ -86,10 +83,10 @@ def api_fetch_satellite():
 @app.route("/api/predict", methods=["POST"])
 def api_predict():
     try:
-        data        = request.json
-        mode        = data.get("mode", "upload")  # "live" or "upload"
-        frames_b64  = data.get("frames", [])
-        location    = data.get("location", "India (Hyderabad)")
+        data       = request.json
+        mode       = data.get("mode", "upload")
+        frames_b64 = data.get("frames", [])
+        location   = data.get("location", "India (Hyderabad)")
 
         if not frames_b64:
             return jsonify({"error": "No image frames provided"}), 400
@@ -129,12 +126,12 @@ def api_weather():
 @app.route("/api/satellite-view", methods=["POST"])
 def api_satellite_view():
     try:
-        data           = request.json
-        layer_names    = data.get("layers", ["True Color (MODIS Terra)"])
-        location       = data.get("location", "India (Hyderabad)")
-        date           = data.get("date", get_available_dates(1)[0])
-        custom_bbox    = data.get("bbox", None)
-        resolution     = int(data.get("resolution", 384))
+        data        = request.json
+        layer_names = data.get("layers", ["True Color (MODIS Terra)"])
+        location    = data.get("location", "India (Hyderabad)")
+        date        = data.get("date", get_available_dates(1)[0])
+        custom_bbox = data.get("bbox", None)
+        resolution  = int(data.get("resolution", 384))
 
         bbox = custom_bbox if custom_bbox else LOCATIONS.get(location)
         if not bbox:
@@ -149,10 +146,10 @@ def api_satellite_view():
             if img:
                 feats = extract_cloud_features(img)
                 results.append({
-                    "layer": lname,
-                    "b64":   pil_to_b64(img),
-                    "cloud": round(feats["cloud_cover"], 3),
-                    "cold":  round(feats["cold_cloud_fraction"], 3),
+                    "layer":    lname,
+                    "b64":      pil_to_b64(img),
+                    "cloud":    round(feats["cloud_cover"], 3),
+                    "cold":     round(feats["cold_cloud_fraction"], 3),
                     "moisture": round(feats["moisture_index"], 3),
                     "texture":  round(feats["brightness_variance"], 4),
                 })
@@ -175,4 +172,5 @@ def api_locations():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=False, host="0.0.0.0", port=port)
